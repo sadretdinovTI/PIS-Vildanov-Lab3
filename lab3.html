@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-    <title>three.js webgl - геометрические фигуры</title>
+    <title>three.js webgl - Комната со всеми текстурами</title>
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
     <link type="text/css" rel="stylesheet" href="https://threejs.org/examples/main.css">
+    <style>
+        #info { background: rgba(0,0,0,0.7); color: white; padding: 8px 16px; border-radius: 20px; }
+        #status { position: absolute; bottom: 20px; left: 20px; background: rgba(0,0,0,0.5); color: #0f0; padding: 4px 12px; border-radius: 12px; font-size: 12px; }
+    </style>
 </head>
 <body>
-    <div id="info">
-        Модель помещения (текстуры с GitHub)
-    </div>
+    <div id="info">Модель помещения (все текстуры с GitHub)</div>
+    <div id="status">⏳ Загрузка текстур...</div>
 
     <!-- Import maps polyfill -->
     <script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
-
     <script type="importmap">
         {
             "imports": {
@@ -29,156 +31,143 @@
         import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
         import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 
-        var camera, scene, renderer;
-        var controls;
-        var ambientLight, light;
-        let object;
+        // --- Инициализация ---
+        const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 1, 80000);
+        camera.position.set(0, -500, 2900);
         
-        init();
-        animate();
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xD3D3D3);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
 
-        function init() {
-            var container = document.createElement('div');
-            document.body.appendChild(container);
+        // --- Освещение ---
+        const ambientLight = new THREE.AmbientLight(0x333333, 50);
+        const light = new THREE.DirectionalLight(0xFFFFFF, 1.0);
+        light.position.set(1, 1, 1);
+        scene.add(ambientLight, light);
 
-            // CAMERA
-            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 1, 80000);
+        // --- Контролы ---
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableZoom = true;
+        controls.zoomSpeed = 0.5;
+        controls.minDistance = 500;
+        controls.maxDistance = 5000;
+        controls.enableDamping = true;
+        controls.target.set(50, 0, 50);
+        controls.addEventListener('change', () => renderer.render(scene, camera));
 
-            // LIGHTS
-            ambientLight = new THREE.AmbientLight(0x333333, 50);
-            light = new THREE.DirectionalLight(0xFFFFFF, 1.0);
-            light.position.set(1, 1, 1);
+        // --- Загрузка текстур с GitHub ---
+        const repoOwner = "sadretdinovTI";
+        const repoName = "PIS-Vildanov-Lab3";
+        const branch = "main";
+        const textureLoader = new THREE.TextureLoader();
+        
+        // ТОЧНЫЙ порядок материалов для BoxGeometry (как требует Three.js):
+        // 0: правая стена (x+)  → wall1.jpg
+        // 1: левая стена (x-)   → wall2.jpg
+        // 2: верх (y+)          → potolok.jpg
+        // 3: низ (y-)           → floor.jpg  (ПОЛ! Этот файл есть в репозитории)
+        // 4: перед (z+)         → wall4.png
+        // 5: зад (z-)           → wall3.jpg
+        
+        const textureConfig = [
+            { name: 'wall1.jpg', type: 'right' },
+            { name: 'wall2.jpg', type: 'left' },
+            { name: 'potolok.jpg', type: 'top' },
+            { name: 'floor.jpg', type: 'bottom' },  // Пол подтвержден!
+            { name: 'wall4.png', type: 'front' },
+            { name: 'wall3.jpg', type: 'back' }
+        ];
 
-            // RENDERER
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            container.appendChild(renderer.domElement);
+        // Счетчик загруженных текстур для статуса
+        let loadedCount = 0;
+        const totalTextures = 6;
+        const statusDiv = document.getElementById('status');
 
-            // EVENTS
-            window.addEventListener('resize', onWindowResize, false);
-
-            // CONTROLS
-            controls = new OrbitControls(camera, renderer.domElement);
-            controls.addEventListener('change', render);
-            controls.enableZoom = true;
-            controls.zoomSpeed = 0.5;
-            controls.minDistance = 500;
-            controls.maxDistance = 5000;
-            controls.enableDamping = true;
-            camera.position.set(0, -500, 2900);
-            controls.target.set(50, 0, 50);
-
-            // SCENE
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xD3D3D3);
-            scene.add(ambientLight);
-            scene.add(light);
-
-            // ========== СТЕНЫ И ПОЛ С ВАШЕГО GITHUB ==========
-            var materials = [];
-            var textureLoader = new THREE.TextureLoader();
-
-            // Ваш репозиторий
-            const repoOwner = "sadretdinovTI";
-            const repoName = "PIS-Vildanov-Lab3";
-            const branch = "main";
-
-            // Соответствие файлов стенам (порядок для BoxGeometry: right, left, up, down, front, back)
-            // Стена 1 (правая) - wall1.jpg
-            // Стена 2 (левая) - wall2.jpg
-            // Стена 3 (потолок) - wall3.jpg
-            // Стена 4 (пол) - floor.jpg
-            // Стена 5 (передняя) - wall4.png
-            // Стена 6 (задняя) - wall3.jpg (повторяем wall3 для задней стены, либо укажите другой файл)
+        const materials = [];
+        
+        textureConfig.forEach((config, index) => {
+            const url = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}/${config.name}`;
             
-            const textureFiles = [
-                'wall1.jpg', // правая стена (x+) - Стена 1
-                'wall2.jpg', // левая стена (x-) - Стена 2
-                'wall3.jpg', // потолок (y+) - Стена 3
-                'floor.jpg', // пол (y-) - Пол
-                'wall4.png', // передняя стена (z+) - Стена 4
-                'wall3.jpg'  // задняя стена (z-) - используем wall3.jpg как временное решение
-            ];
-
-            for (let i = 0; i < 6; i++) {
-                const textureUrl = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}/${textureFiles[i]}`;
-                
-                const texture = textureLoader.load(
-                    textureUrl,
-                    () => console.log(`✅ Загружена текстура: ${textureFiles[i]}`),
-                    undefined,
-                    (err) => console.error(`❌ Ошибка загрузки ${textureFiles[i]}:`, err)
-                );
-                
-                // Настройки текстур (как в исходном коде)
-                texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.x = -1; // отражение по X
-                
-                // Специальные настройки для потолка и пола
-                if (i === 2 || i === 3) { // потолок и пол
-                    texture.repeat.set(3, 3);
+            const texture = textureLoader.load(
+                url,
+                () => {
+                    loadedCount++;
+                    statusDiv.innerHTML = `✅ Загружено ${loadedCount}/${totalTextures}: ${config.name}`;
+                    if (loadedCount === totalTextures) {
+                        statusDiv.style.backgroundColor = 'rgba(0,80,0,0.7)';
+                        statusDiv.style.color = '#fff';
+                    }
+                },
+                undefined,
+                (err) => {
+                    console.error(`❌ Ошибка загрузки ${config.name}:`, err);
+                    statusDiv.innerHTML = `⚠️ Ошибка: ${config.name} не загружен!`;
                 }
-                if (i === 2) { // потолок
-                    texture.offset.set(0.05, 0.2);
-                }
-                
-                const material = new THREE.MeshPhongMaterial({ 
-                    map: texture, 
-                    side: THREE.BackSide 
-                });
-                
-                materials.push(material);
+            );
+            
+            // Настройка текстур
+            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.x = -1;
+            
+            // Особые настройки для пола и потолка
+            if (index === 2 || index === 3) { // потолок (2) и пол (3)
+                texture.repeat.set(3, 3);
             }
+            if (index === 2) { // потолок
+                texture.offset.set(0.05, 0.2);
+            }
+            
+            const material = new THREE.MeshPhongMaterial({ 
+                map: texture, 
+                side: THREE.BackSide,
+                shininess: 10
+            });
+            
+            materials[index] = material;
+        });
 
-            // Создаем комнату (большой куб)
-            var geometry = new THREE.BoxGeometry(5000, 5000, 5000);
-            var roomCube = new THREE.Mesh(geometry, materials);
-            roomCube.position.y = 100;
-            scene.add(roomCube);
-            // ========== КОНЕЦ СТЕНЫ/ПОЛ ==========
+        // --- Создание комнаты ---
+        const geometry = new THREE.BoxGeometry(5000, 5000, 5000);
+        const room = new THREE.Mesh(geometry, materials);
+        room.position.y = 100;
+        scene.add(room);
 
-            // ========== МОДЕЛЬ ЧЕЛОВЕКА ==========
-            const onProgress = function(xhr) {
-                if (xhr.lengthComputable) {
-                    const percentComplete = xhr.loaded / xhr.total * 100;
-                    console.log(percentComplete.toFixed(2) + '% downloaded');
-                }
-            };
+        // --- Загрузка модели человека ---
+        new MTLLoader()
+            .setPath('https://threejs.org/examples/models/obj/male02/')
+            .load('male02.mtl', (materials) => {
+                materials.preload();
+                new OBJLoader()
+                    .setMaterials(materials)
+                    .setPath('https://threejs.org/examples/models/obj/male02/')
+                    .load('male02.obj', (obj) => {
+                        obj.position.set(-1500, -2400, -200);
+                        obj.rotation.y = Math.PI / 2;
+                        obj.scale.setScalar(10);
+                        scene.add(obj);
+                        console.log("✅ Модель человека загружена");
+                    });
+            });
 
-            new MTLLoader()
-                .setPath('https://threejs.org/examples/models/obj/male02/')
-                .load('male02.mtl', function(materials) {
-                    materials.preload();
-
-                    new OBJLoader()
-                        .setMaterials(materials)
-                        .setPath('https://threejs.org/examples/models/obj/male02/')
-                        .load('male02.obj', function(object) {
-                            object.position.set(-1500, -2400, -200);
-                            object.rotation.y = Math.PI / 2;
-                            object.scale.setScalar(10);
-                            scene.add(object);
-                        }, onProgress);
-                });
-            // ========== КОНЕЦ МОДЕЛИ ==========
-        }
-
-        function onWindowResize() {
+        // --- Обработка событий ---
+        window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+        });
 
+        // --- Анимация ---
         function animate() {
             requestAnimationFrame(animate);
-            controls.update(500);
-            render();
-        }
-
-        function render() {
+            controls.update();
             renderer.render(scene, camera);
         }
+        
+        animate();
     </script>
 </body>
 </html>
