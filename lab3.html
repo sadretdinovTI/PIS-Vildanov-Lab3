@@ -84,28 +84,49 @@
             const repoName = "PIS-Vildanov-Lab3";
             const branch = "main";
 
-            // Загружаем 6 текстур (1.jpg - 6.jpg) с GitHub
-            for (let i = 1; i <= 6; i++) {
-                const textureUrl = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}/${i}.jpg`;
+            // Соответствие файлов стенам (порядок для BoxGeometry: right, left, up, down, front, back)
+            // Стена 1 (правая) - wall1.jpg
+            // Стена 2 (левая) - wall2.jpg
+            // Стена 3 (потолок) - wall3.jpg
+            // Стена 4 (пол) - floor.jpg
+            // Стена 5 (передняя) - wall4.png
+            // Стена 6 (задняя) - wall3.jpg (повторяем wall3 для задней стены, либо укажите другой файл)
+            
+            const textureFiles = [
+                'wall1.jpg', // правая стена (x+) - Стена 1
+                'wall2.jpg', // левая стена (x-) - Стена 2
+                'wall3.jpg', // потолок (y+) - Стена 3
+                'floor.jpg', // пол (y-) - Пол
+                'wall4.png', // передняя стена (z+) - Стена 4
+                'wall3.jpg'  // задняя стена (z-) - используем wall3.jpg как временное решение
+            ];
+
+            for (let i = 0; i < 6; i++) {
+                const textureUrl = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}/${textureFiles[i]}`;
                 
                 const texture = textureLoader.load(
                     textureUrl,
-                    () => console.log(`✅ Загружена текстура ${i}.jpg`),
+                    () => console.log(`✅ Загружена текстура: ${textureFiles[i]}`),
                     undefined,
-                    (err) => console.error(`❌ Ошибка загрузки ${i}.jpg:`, err)
+                    (err) => console.error(`❌ Ошибка загрузки ${textureFiles[i]}:`, err)
                 );
+                
+                // Настройки текстур (как в исходном коде)
+                texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.x = -1; // отражение по X
+                
+                // Специальные настройки для потолка и пола
+                if (i === 2 || i === 3) { // потолок и пол
+                    texture.repeat.set(3, 3);
+                }
+                if (i === 2) { // потолок
+                    texture.offset.set(0.05, 0.2);
+                }
                 
                 const material = new THREE.MeshPhongMaterial({ 
                     map: texture, 
                     side: THREE.BackSide 
                 });
-                
-                // Настройки повторения текстур (как в исходном коде)
-                texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.x = -1; // отражение по X
-                
-                if (i === 4 || i === 3) texture.repeat.set(3, 3); // пол и потолок
-                if (i === 3) texture.offset.set(0.05, 0.2); // смещение для потолка
                 
                 materials.push(material);
             }
